@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">ExoPlayer PIP</string>
+    <string name="landscape_video">Play Landscape Video</string>
+    <string name="landscape_portrait">Play Portrait Video</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+</resources>
