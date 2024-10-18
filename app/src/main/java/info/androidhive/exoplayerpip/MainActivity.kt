@@ -10,7 +10,6 @@ class MainActivity : AppCompatActivity() {
         ActivityMainBinding.inflate(layoutInflater)
     }
 
-    private val title = "Big Buck Bunny"
     private var mediaUrlLandscape: String =
         "https://firebasestorage.googleapis.com/v0/b/project-8525323942962534560.appspot.com/o/samples%2FBig%20Buck%20Bunny%2060fps%204K%20-%20Official%20Blender%20Foundation%20Short%20Film.mp4?alt=media&token=351ab76e-6e1f-43eb-b868-0a060277a338"
 
@@ -28,14 +27,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.content.btnVideoPortrait.setOnClickListener {
-            playVideo(mediaUrlPortrait, true)
+            playVideo(mediaUrlPortrait)
         }
     }
 
-    private fun playVideo(url: String, isPortrait: Boolean = false) {
+    private fun playVideo(url: String) {
         startActivity(Intent(this, PlayerActivity::class.java).apply {
             putExtra("url", url)
-            putExtra("is_portrait", isPortrait)
         })
     }
 }

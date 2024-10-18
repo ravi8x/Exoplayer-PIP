@@ -1,5 +1,6 @@
 package info.androidhive.exoplayerpip
 
+import android.app.AppOpsManager
 import android.app.PendingIntent
 import android.app.PictureInPictureParams
 import android.app.RemoteAction
@@ -20,6 +21,7 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.OptIn
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -33,7 +35,6 @@ class PlayerActivity : AppCompatActivity() {
     }
     private var player: Player? = null
     private var mediaUrl: String? = null
-    private var isPortrait: Boolean = false
 
     private val isPipSupported by lazy {
         packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
@@ -79,7 +80,6 @@ class PlayerActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         mediaUrl = intent.extras?.getString("url")
-        isPortrait = intent.extras?.getBoolean("is_portrait") ?: false
 
         if (mediaUrl.isNullOrBlank()) {
             Toast.makeText(this, "Media url is null!", Toast.LENGTH_SHORT).show()
@@ -87,7 +87,10 @@ class PlayerActivity : AppCompatActivity() {
         }
 
         // register the broadcast receiver
-        registerReceiver(broadcastReceiver, IntentFilter(ACTION_PLAYER_CONTROLS))
+        ContextCompat.registerReceiver(
+            this, broadcastReceiver, IntentFilter(ACTION_PLAYER_CONTROLS),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     @OptIn(UnstableApi::class)
@@ -108,20 +111,11 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Enter into PIP when back is pressed and video is playing
-     * */
-    fun handleBackPressed() {
-        if (!isPipSupported) {
-            finish()
-            return
-        }
-
-        if (!isInPictureInPictureMode && binding.playerView.player?.isPlaying == true) {
-            enterPipMode()
+    private fun enterPipMode() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            enterPictureInPictureMode(updatePictureInPictureParams())
         } else {
-            // video is not playing, finish the activity
-            finish()
+            enterPictureInPictureMode()
         }
     }
 
@@ -131,28 +125,13 @@ class PlayerActivity : AppCompatActivity() {
         enterPipMode()
     }
 
-    private fun enterPipMode() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            enterPictureInPictureMode(updatePictureInPictureParams())
-        } else {
-            enterPictureInPictureMode()
-        }
-    }
-
     // Updating picture in picture param
     private fun updatePictureInPictureParams(): PictureInPictureParams {
         val visibleRect = Rect()
         binding.playerView.getGlobalVisibleRect(visibleRect)
 
-        // Aspect ratio based on video size landscape or portrait
-        val rational = if (isPortrait) {
-            Rational(9, 16)
-        } else {
-            Rational(16, 9)
-        }
-
         val builder = PictureInPictureParams.Builder()
-            .setAspectRatio(rational)
+            .setAspectRatio(Rational(visibleRect.width(), visibleRect.height()))
             .setActions(
                 listOf(
                     // Keeping play or pause action based on player state
@@ -198,12 +177,46 @@ class PlayerActivity : AppCompatActivity() {
         binding.playerView.useController = !isInPictureInPictureMode
     }
 
+    /**
+     * Enter into PIP when back is pressed and video is playing
+     * */
+    fun handleBackPressed() {
+        if (!isPipSupported || !isPipPermissionEnabled()) {
+            finish()
+            return
+        }
+
+        if (!isInPictureInPictureMode && binding.playerView.player?.isPlaying == true) {
+            enterPipMode()
+        } else {
+            // video is not playing, finish the activity
+            finish()
+        }
+    }
+
+    private fun isPipPermissionEnabled(): Boolean {
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager?
+        val enabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps?.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_PICTURE_IN_PICTURE,
+                android.os.Process.myUid(),
+                packageName
+            ) == AppOpsManager.MODE_ALLOWED
+        } else {
+            appOps?.checkOpNoThrow(
+                AppOpsManager.OPSTR_PICTURE_IN_PICTURE,
+                android.os.Process.myUid(),
+                packageName
+            ) == AppOpsManager.MODE_ALLOWED
+        }
+        return enabled
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
 
         // receiving new media url when activity is running in PIP mode
         mediaUrl = intent.extras?.getString("url")
-        isPortrait = intent.extras?.getBoolean("is_portrait") ?: false
         initializePlayer()
     }
 
