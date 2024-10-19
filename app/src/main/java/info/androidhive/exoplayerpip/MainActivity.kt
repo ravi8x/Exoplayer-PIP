@@ -27,13 +27,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.content.btnVideoPortrait.setOnClickListener {
-            playVideo(mediaUrlPortrait)
+            playVideo(mediaUrlPortrait, true)
         }
     }
 
-    private fun playVideo(url: String) {
+    private fun playVideo(url: String, isPortrait: Boolean = false) {
         startActivity(Intent(this, PlayerActivity::class.java).apply {
             putExtra("url", url)
+            putExtra("is_portrait", isPortrait)
         })
     }
 }

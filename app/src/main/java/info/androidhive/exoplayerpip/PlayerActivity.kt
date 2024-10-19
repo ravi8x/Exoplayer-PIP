@@ -21,7 +21,6 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.OptIn
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -29,13 +28,15 @@ import androidx.media3.exoplayer.ExoPlayer
 import info.androidhive.exoplayerpip.databinding.ActivityPlayerBinding
 
 
-class PlayerActivity : AppCompatActivity() {
+class PlayerActivity : AppCompatActivity(), Player.Listener {
     private val binding by lazy(LazyThreadSafetyMode.NONE) {
         ActivityPlayerBinding.inflate(layoutInflater)
     }
     private var player: Player? = null
     private var mediaUrl: String? = null
+    private var isPortrait: Boolean = false
 
+    // whether OS supports PiP or not
     private val isPipSupported by lazy {
         packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
     }
@@ -47,9 +48,12 @@ class PlayerActivity : AppCompatActivity() {
         private const val REQUEST_PLAY_OR_PAUSE = 2
     }
 
-    private var callback: OnBackPressedCallback = object : OnBackPressedCallback(true) {
+    private var backPressCallback: OnBackPressedCallback = object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() {
-            handleBackPressed()
+            // enter PiP mode when video is playing
+            if (!isInPictureInPictureMode && binding.playerView.player?.isPlaying == true) {
+                enterPipMode()
+            }
         }
     }
 
@@ -80,6 +84,7 @@ class PlayerActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         mediaUrl = intent.extras?.getString("url")
+        isPortrait = intent.extras?.getBoolean("is_portrait") ?: false
 
         if (mediaUrl.isNullOrBlank()) {
             Toast.makeText(this, "Media url is null!", Toast.LENGTH_SHORT).show()
@@ -87,10 +92,7 @@ class PlayerActivity : AppCompatActivity() {
         }
 
         // register the broadcast receiver
-        ContextCompat.registerReceiver(
-            this, broadcastReceiver, IntentFilter(ACTION_PLAYER_CONTROLS),
-            ContextCompat.RECEIVER_NOT_EXPORTED
-        )
+        registerReceiver(broadcastReceiver, IntentFilter(ACTION_PLAYER_CONTROLS))
     }
 
     @OptIn(UnstableApi::class)
@@ -106,6 +108,7 @@ class PlayerActivity : AppCompatActivity() {
             val mediaBuilder = MediaItem.Builder().setUri(mediaUrl)
             val mediaItem = mediaBuilder.build()
             exoPlayer.setMediaItems(listOf(mediaItem))
+            exoPlayer.addListener(this)
             exoPlayer.playWhenReady = true
             exoPlayer.prepare()
         }
@@ -130,8 +133,15 @@ class PlayerActivity : AppCompatActivity() {
         val visibleRect = Rect()
         binding.playerView.getGlobalVisibleRect(visibleRect)
 
+        // Aspect ratio based on video size landscape or portrait
+        val rational = if (isPortrait) {
+            Rational(9, 16)
+        } else {
+            Rational(16, 9)
+        }
+
         val builder = PictureInPictureParams.Builder()
-            .setAspectRatio(Rational(visibleRect.width(), visibleRect.height()))
+            .setAspectRatio(rational)
             .setActions(
                 listOf(
                     // Keeping play or pause action based on player state
@@ -177,21 +187,10 @@ class PlayerActivity : AppCompatActivity() {
         binding.playerView.useController = !isInPictureInPictureMode
     }
 
-    /**
-     * Enter into PIP when back is pressed and video is playing
-     * */
-    fun handleBackPressed() {
-        if (!isPipSupported || !isPipPermissionEnabled()) {
-            finish()
-            return
-        }
-
-        if (!isInPictureInPictureMode && binding.playerView.player?.isPlaying == true) {
-            enterPipMode()
-        } else {
-            // video is not playing, finish the activity
-            finish()
-        }
+    override fun onIsPlayingChanged(isPlaying: Boolean) {
+        super.onIsPlayingChanged(isPlaying)
+        // enable back press handler when pip is supported, pip permission is given and video is playing
+        backPressCallback.isEnabled = isPlaying && isPipSupported && isPipPermissionEnabled()
     }
 
     private fun isPipPermissionEnabled(): Boolean {
@@ -222,8 +221,8 @@ class PlayerActivity : AppCompatActivity() {
 
     public override fun onStart() {
         super.onStart()
-        callback.remove()
-        onBackPressedDispatcher.addCallback(this, callback)
+        backPressCallback.remove()
+        onBackPressedDispatcher.addCallback(this, backPressCallback)
         initializePlayer()
     }
 
@@ -241,7 +240,8 @@ class PlayerActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
-        callback.remove()
+        backPressCallback.remove()
+        unregisterReceiver(broadcastReceiver)
         releasePlayer()
 
         // remove the activity from recent tasks as PIP activity won't be
