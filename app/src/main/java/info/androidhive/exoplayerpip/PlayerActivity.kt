@@ -115,11 +115,7 @@ class PlayerActivity : AppCompatActivity(), Player.Listener {
     }
 
     private fun enterPipMode() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            enterPictureInPictureMode(updatePictureInPictureParams())
-        } else {
-            enterPictureInPictureMode()
-        }
+        enterPictureInPictureMode(updatePictureInPictureParams())
     }
 
     // enter into PIP when home is pressed
